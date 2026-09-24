@@ -410,3 +410,80 @@ Confidence notes:
   linked in via a COFF object rather than `incbin`, and onefile filenames are
   `utf-16le`. Both cases are implemented; neither was exercised against a real
   Windows binary in this environment.
+
+---
+
+## 9. Reconstruction stage (`reconstruct.py`)
+
+The forensics tool shows what is in the file. `reconstruct.py` turns that into
+per-function evidence for source reconstruction.
+
+### The property it exploits
+
+Constants in a module's blob are emitted roughly **in source order**, and each
+function's code-object record is emitted at the point that function is compiled.
+So the constants sitting next to a code-object record are that function's own
+identifiers, literals and slice objects.
+
+For `derive_token` in the test project, the binary yields:
+
+```
+def derive_token(username, scope, ttl_seconds):   # line 5
+  locals  : username, scope, ttl_seconds, payload
+  defaults: ('read', 900)
+  format-string        '%s:%s:%s'
+  class-or-constant    'SECRET_SALT'
+  attribute-or-global  'hashlib'
+  attribute-or-global  'sha256'
+  literal              'utf-8'
+  attribute-or-global  'hexdigest'
+  slice                slice(None, 32, None)
+```
+
+That is enough to write the body almost verbatim:
+
+```python
+def derive_token(username, scope="read", ttl_seconds=900):
+    payload = "%s:%s:%s" % (username, scope, SECRET_SALT)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:32]
+```
+
+This is why a reconstruction can be "very close" without being the original.
+
+### Measured fidelity of the evidence
+
+Against `myapp/utils.py` (43 body tokens across 7 functions):
+
+| Measure | Result |
+|---|---|
+| Tokens present anywhere in the module constants | **79%** |
+| Tokens cleanly attributed to their function | **65%** |
+| Correct function signatures / line numbers | **100%** |
+| Correct default-argument values | recovered, pairing is heuristic |
+
+The gap between "present" and "attributed" is an ordering artefact, not missing
+data: a constant declared early in a function can be emitted before that
+function's own marker. The tool therefore emits the **complete ordered constant
+stream** alongside the per-function view so nothing is dropped.
+
+### The genuine blind spot: builtins
+
+`len`, `range`, `sum` and `staticmethod` do **not** survive as constants. Nuitka
+resolves builtins at compile time and emits direct C calls, so their names never
+exist as strings in the binary. Any reconstruction must infer them from context.
+
+### Honest limits
+
+`reconstruct.py` emits evidence, a skeleton and an LLM prompt. It does not claim
+to produce the original source. Bodies are inferred; where the evidence is
+insufficient the prompt instructs the model to say so rather than fabricate.
+Recovered output should be treated as a **behavioural approximation** to be
+verified by testing, not as the original.
+
+Practical guidance for anyone relying on recovery:
+
+* Expect happy-path equivalence, not equivalence. Edge cases, error handling and
+  exact algorithms are where inferred bodies diverge.
+* Nothing about comments or formatting can be recovered, ever.
+* For your own project, the correct recovery path is version control, a backup,
+  or a build machine - never binary archaeology.

@@ -729,6 +729,47 @@ def _try_parse_entries(payload, enc, win, has_crc, archive):
     return out if out else None
 
 
+def load_blobs(path):
+    """Locate constants blobs in a binary, transparently handling onefile.
+
+    Returns (blobs, meta) where meta describes any packaging layer that had to
+    be unwrapped.  Used by both the reporter and the reconstructor so the two
+    always agree on what the target contains.
+    """
+    data = open(path, "rb").read()
+    meta = {}
+
+    off, blobs = find_blobs(data)
+    if off is not None:
+        meta["packaging"] = "direct"
+        return blobs, meta
+
+    of = find_onefile_payload(data)
+    if of is None:
+        return None, meta
+
+    indicator, payload_off, payload = of
+    meta["packaging"] = "onefile"
+    meta["onefile_payload_offset"] = payload_off
+    meta["onefile_compressed"] = indicator == b"Y"
+
+    files, err = parse_onefile_payload(payload, indicator)
+    if files is None:
+        meta["onefile_error"] = err
+        return None, meta
+
+    meta["onefile_files"] = len(files)
+    cands = [(n, d) for n, d in files.items() if d and d[:2] in (b"MZ", b"\x7fE")]
+    cands.sort(key=lambda kv: (b".bytecode\x00" not in kv[1], -len(kv[1])))
+    for name, inner in cands:
+        inner_off, inner_blobs = find_blobs(inner)
+        if inner_off is not None:
+            meta["onefile_inner"] = name
+            return inner_blobs, meta
+
+    return None, meta
+
+
 def find_blobs(data):
     """Locate the constants blob directory within the image.
 

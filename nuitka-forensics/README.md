@@ -66,10 +66,30 @@ See `FINDINGS.md` for the full format specification and the validation results.
 ## Layout
 
 ```
-nuitka_forensics.py    the analyser
+nuitka_forensics.py    the analyser (what is in the file)
+reconstruct.py         reconstruction stage (per-function evidence + LLM prompt)
 compare_recovery.py    fidelity measurement against original source
 FINDINGS.md            full technical report and format specification
 ```
+
+## Reconstruction stage
+
+```bash
+python3 reconstruct.py target.exe -o out/
+```
+
+Writes:
+
+* `out/evidence.txt` - per-function evidence plus the complete ordered constant
+  stream, so nothing is omitted
+* `out/prompt.txt` - an LLM prompt encoding every recovered constraint, with
+  instructions to mark inferred code and to refuse when evidence is insufficient
+* `out/skeleton/` - the exact module tree with true signatures; bodies marked
+  as not recoverable
+
+This stage produces **evidence**, not source. It cannot produce the original
+source: bodies of compiled modules are not in the binary. See FINDINGS.md
+section 9 for measured fidelity and the builtins blind spot.
 
 ## Safety
 
