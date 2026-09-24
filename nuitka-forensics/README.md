@@ -10,6 +10,15 @@ gone.
 ## Quick start
 
 ```bash
+python3 run.py target.exe
+```
+
+That runs the whole pipeline and writes a `recovered/` folder. See
+**QUICKSTART.md** for a plain-English walkthrough.
+
+To use the stages individually:
+
+```bash
 python3 nuitka_forensics.py target.exe
 ```
 
@@ -66,10 +75,13 @@ See `FINDINGS.md` for the full format specification and the validation results.
 ## Layout
 
 ```
-nuitka_forensics.py    the analyser (what is in the file)
-reconstruct.py         reconstruction stage (per-function evidence + LLM prompt)
-compare_recovery.py    fidelity measurement against original source
+run.py                 ONE COMMAND - runs everything, writes recovered/
+nuitka_forensics.py    stage 1: what is in the file
+reconstruct.py         stage 2: per-function evidence + LLM prompt
+compare_recovery.py    measures reconstruction accuracy vs a known original
+QUICKSTART.md          plain-English usage guide  <- start here
 FINDINGS.md            full technical report and format specification
+testdata/              a sample project for trying it out
 ```
 
 ## Reconstruction stage
